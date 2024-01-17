@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -10,8 +12,28 @@ type Response struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
 }
+type User struct {
+    gorm.Model
+    Name string
+    Email string
+}
+
 
 func main() {
+	connStr := "user=username dbname=mydb sslmode=disable"
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+	log.Fatal(err)
+		}
+	err = db.Ping()
+	if err != nil {
+	log.Fatal(err)
+		}
+	fmt.Println("Successfully connected to the database")
+	defer db.Close()
+
+	// ###############################################
+
 	http.HandleFunc("/receiveData", receiveData)
 	http.HandleFunc("/handleGetRequest", handleGetRequest)
 	http.HandleFunc("/htmlPage", handleHTMLPage)
@@ -41,13 +63,6 @@ func receiveData(w http.ResponseWriter, r *http.Request) {
         handleErrorResponse(w, "Неверный формат JSON")
         return
     }
-
-    // Доступ к другим полям в структуре 'person' по мере необходимости
-    // Например:
-    // personID := person["id"].(float64)
-    // name := person["name"].(string)
-
-    // Обработка данных и ответ успешным статусом
     response := Response{
         Status:  "success",
         Message: "SUCCESS",
@@ -73,15 +88,52 @@ func handleGetRequest(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Доступ к параметрам запроса
     personID := r.URL.Query().Get("id")
     name := r.URL.Query().Get("name")
 
-    // Обработка параметров и ответ успешным статусом
     response := Response{
         Status:  "success",
         Message: fmt.Sprintf("Person ID: %s, Name: %s", personID, name),
     }
     sendJSONResponse(w, http.StatusOK, response)
 }
-
+func handleHTMLPage(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "index.html")
+}
+func createUser(db *gorm.DB, user *User) error {
+    result := db.Create(user)
+    if result.Error != nil {
+        return result.Error
+    }
+    return nil
+}
+func getUserByID(db *gorm.DB, userID uint) (*User, error) {
+    var user User
+    result := db.First(&user, userID)
+    if result.Error != nil {
+        return nil, result.Error
+    }
+    return &user, nil
+}
+func updateUserName(db *gorm.DB, userID uint, newName string) error {
+    result := db.Model(&User{}).Where("id = ?", userID).Update("name", newName)
+    if result.Error != nil {
+        return result.Error
+    }
+    return nil
+}
+func deleteUserByID(db *gorm.DB, userID uint) error {
+    result := db.Delete(&User{}, userID)
+    if result.Error != nil {
+        return result.Error
+    }
+    return nil
+}
+func getAllUsers(db *gorm.DB) ([]User, error) {
+    var users []User
+    result := db.Find(&users)
+    if result.Error != nil {
+        return nil, result.Error
+    }
+    return users, nil
+}
